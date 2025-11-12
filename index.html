@@ -1,0 +1,168 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Application Arbitrage</title>
+<style>
+    body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
+    .hidden { display: none; }
+    .player-section { border: 1px solid #ccc; padding: 15px; margin: 10px; display: inline-block; width: 45%; }
+    button { margin: 5px; padding: 10px; }
+    .stats { margin-top: 20px; text-align: left; }
+</style>
+</head>
+<body>
+
+<h1>Application d'Arbitrage</h1>
+
+<!-- Choix du nombre de joueurs -->
+<div id="start-screen">
+    <h2>Choisissez le nombre de joueurs :</h2>
+    <button onclick="choosePlayers(1)">1 Joueur</button>
+    <button onclick="choosePlayers(2)">2 Joueurs</button>
+</div>
+
+<!-- Zone de saisie des noms -->
+<div id="name-screen" class="hidden">
+    <h2>Entrez le(s) nom(s) :</h2>
+    <div id="name-inputs"></div>
+    <button onclick="startGame()">Commencer</button>
+</div>
+
+<!-- Zone de jeu -->
+<div id="game-screen" class="hidden">
+    <div id="players-container"></div>
+    <div class="stats">
+        <h3>Statistiques Globales :</h3>
+        <p>Cartons rouges : <span id="redCards">0</span></p>
+        <p>Cartons jaunes : <span id="yellowCards">0</span></p>
+        <p>Fautes simples : <span id="simpleFaults">0</span></p>
+        <p>Fautes de jeu : <span id="gameFaults">0</span></p>
+        <p>Retournées acrobatiques : <span id="acrobatics">0</span></p>
+        <p>Coups francs directs : <span id="freeKicks">0</span></p>
+        <p>Buts : <span id="goals">0</span></p>
+        <p>Blessures : <span id="injuries">0</span></p>
+        <p>Koe bues : <span id="koeBues">0</span></p>
+    </div>
+    <button onclick="undoAction()">Retour en arrière</button>
+    <button onclick="saveStats()">Enregistrer la page</button>
+    <button onclick="newGame()">Nouvelle partie</button>
+</div>
+
+<script>
+let numPlayers = 0;
+let players = [];
+let globalStats = {
+    redCards: 0, yellowCards: 0, simpleFaults: 0, gameFaults: 0,
+    acrobatics: 0, freeKicks: 0, goals: 0, injuries: 0, koeBues: 0
+};
+let history = [];
+
+function choosePlayers(n) {
+    numPlayers = n;
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('name-screen').classList.remove('hidden');
+    let nameInputs = document.getElementById('name-inputs');
+    nameInputs.innerHTML = '';
+    for (let i = 1; i <= n; i++) {
+        nameInputs.innerHTML += `<input type="text" id="player${i}" placeholder="Nom du joueur ${i}"><br>`;
+    }
+}
+
+function startGame() {
+    players = [];
+    for (let i = 1; i <= numPlayers; i++) {
+        players.push({ name: document.getElementById(`player${i}`).value || `Joueur ${i}`, score: 10 });
+    }
+    document.getElementById('name-screen').classList.add('hidden');
+    document.getElementById('game-screen').classList.remove('hidden');
+    renderPlayers();
+}
+
+function renderPlayers() {
+    let container = document.getElementById('players-container');
+    container.innerHTML = '';
+    players.forEach((p, index) => {
+        container.innerHTML += `
+        <div class="player-section">
+            <h3>${p.name}</h3>
+            <p>Score : <span id="score${index}">${p.score}</span></p>
+            <button onclick="applyAction(${index}, 'goal')">But (-5)</button>
+            <button onclick="applyAction(${index}, 'red')">Carton rouge (-5)</button>
+            <button onclick="applyAction(${index}, 'yellow')">Carton jaune (-2)</button>
+            <button onclick="applyAction(${index}, 'simple')">Faute simple (-1)</button>
+            <button onclick="applyAction(${index}, 'game')">Faute de jeu (-1)</button>
+            <button onclick="applyAction(${index}, 'acro')">Retourné acrobatique (+Koe)</button>
+            <button onclick="applyAction(${index}, 'free')">Coup franc direct (-10)</button>
+            <button onclick="applyAction(${index}, 'injury')">Blessure (-10)</button>
+        </div>`;
+    });
+}
+
+function applyAction(playerIndex, action) {
+    let p = players[playerIndex];
+    let change = 0;
+    switch(action) {
+        case 'goal': change = -5; globalStats.goals++; globalStats.koeBues++; break;
+        case 'red': change = -5; globalStats.redCards++; break;
+        case 'yellow': change = -2; globalStats.yellowCards++; break;
+        case 'simple': change = -1; globalStats.simpleFaults++; break;
+        case 'game': change = -1; globalStats.gameFaults++; break;
+        case 'acro': globalStats.acrobatics++; globalStats.koeBues++; break;
+        case 'free': change = -10; globalStats.freeKicks++; globalStats.koeBues++; break;
+        case 'injury': change = -10; globalStats.injuries++; break;
+    }
+    p.score += change;
+    if (p.score <= 0) { p.score = 10; globalStats.koeBues++; }
+    history.push({playerIndex, action, change});
+    updateUI();
+}
+
+function updateUI() {
+    players.forEach((p, i) => document.getElementById(`score${i}`).textContent = p.score);
+    for (let key in globalStats) {
+        document.getElementById(key).textContent = globalStats[key];
+    }
+}
+
+function undoAction() {
+    if (history.length === 0) return;
+    let last = history.pop();
+    let p = players[last.playerIndex];
+    p.score -= last.change;
+    if (p.score <= 0) p.score = 10; // Correction si nécessaire
+    // Réduire stats
+    switch(last.action) {
+        case 'goal': globalStats.goals--; globalStats.koeBues--; break;
+        case 'red': globalStats.redCards--; break;
+        case 'yellow': globalStats.yellowCards--; break;
+        case 'simple': globalStats.simpleFaults--; break;
+        case 'game': globalStats.gameFaults--; break;
+        case 'acro': globalStats.acrobatics--; globalStats.koeBues--; break;
+        case 'free': globalStats.freeKicks--; globalStats.koeBues--; break;
+        case 'injury': globalStats.injuries--; break;
+    }
+    updateUI();
+}
+
+function saveStats() {
+    let content = "Statistiques:\n";
+    for (let key in globalStats) content += `${key}: ${globalStats[key]}\n`;
+    let blob = new Blob([content], {type: "text/plain"});
+    let link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "stats.txt";
+    link.click();
+}
+
+function newGame() {
+    players.forEach(p => p.score = 10);
+    for (let key in globalStats) globalStats[key] = 0;
+    history = [];
+    updateUI();
+}
+</script>
+
+</body>
+</html>
