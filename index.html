@@ -8,8 +8,10 @@
     body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
     .hidden { display: none; }
     .player-section { border: 1px solid #ccc; padding: 15px; margin: 10px; display: inline-block; width: 45%; }
-    button { margin: 5px; padding: 10px; }
+    button { margin: 5px; padding: 10px; font-size: 16px; }
     .stats { margin-top: 20px; text-align: left; }
+    #globalScore { font-size: 40px; font-weight: bold; color: #d32f2f; margin: 20px 0; }
+    #victoryMessage { font-size: 50px; font-weight: bold; color: green; margin-top: 20px; }
 </style>
 </head>
 <body>
@@ -32,6 +34,9 @@
 
 <!-- Zone de jeu -->
 <div id="game-screen" class="hidden">
+    <div id="globalScore">Score global : 0</div>
+    <button onclick="showResults()" style="font-size:30px; background:#2196F3; color:white;">RESULTATS</button>
+    <div id="victoryMessage"></div>
     <div id="players-container"></div>
     <div class="stats">
         <h3>Statistiques Globales :</h3>
@@ -42,6 +47,7 @@
         <p>Retournées acrobatiques : <span id="acrobatics">0</span></p>
         <p>Coups francs directs : <span id="freeKicks">0</span></p>
         <p>Buts : <span id="goals">0</span></p>
+        <p>Buts avec gardien : <span id="keeperGoals">0</span></p>
         <p>Blessures : <span id="injuries">0</span></p>
         <p>Koe bues : <span id="koeBues">0</span></p>
     </div>
@@ -55,7 +61,7 @@ let numPlayers = 0;
 let players = [];
 let globalStats = {
     redCards: 0, yellowCards: 0, simpleFaults: 0, gameFaults: 0,
-    acrobatics: 0, freeKicks: 0, goals: 0, injuries: 0, koeBues: 0
+    acrobatics: 0, freeKicks: 0, goals: 0, keeperGoals: 0, injuries: 0, koeBues: 0
 };
 let history = [];
 
@@ -78,6 +84,7 @@ function startGame() {
     document.getElementById('name-screen').classList.add('hidden');
     document.getElementById('game-screen').classList.remove('hidden');
     renderPlayers();
+    updateUI();
 }
 
 function renderPlayers() {
@@ -89,13 +96,14 @@ function renderPlayers() {
             <h3>${p.name}</h3>
             <p>Score : <span id="score${index}">${p.score}</span></p>
             <button onclick="applyAction(${index}, 'goal')">But (-5)</button>
+            <button onclick="applyAction(${index}, 'goalKeeper')">But avec gardien (-5 + Koe)</button>
             <button onclick="applyAction(${index}, 'red')">Carton rouge (-5)</button>
             <button onclick="applyAction(${index}, 'yellow')">Carton jaune (-2)</button>
             <button onclick="applyAction(${index}, 'simple')">Faute simple (-1)</button>
             <button onclick="applyAction(${index}, 'game')">Faute de jeu (-1)</button>
             <button onclick="applyAction(${index}, 'acro')">Retourné acrobatique (+Koe)</button>
             <button onclick="applyAction(${index}, 'free')">Coup franc direct (-10)</button>
-            <button onclick="applyAction(${index}, 'injury')">Blessure (-10)</button>
+            <button onclick="applyAction(${index}, 'injury')">Blessure (-5)</button>
         </div>`;
     });
 }
@@ -103,19 +111,22 @@ function renderPlayers() {
 function applyAction(playerIndex, action) {
     let p = players[playerIndex];
     let change = 0;
+    let koeChange = 0;
     switch(action) {
-        case 'goal': change = -5; globalStats.goals++; globalStats.koeBues++; break;
+        case 'goal': change = -5; globalStats.goals++; break;
+        case 'goalKeeper': change = -5; globalStats.keeperGoals++; koeChange = 1; break;
         case 'red': change = -5; globalStats.redCards++; break;
         case 'yellow': change = -2; globalStats.yellowCards++; break;
         case 'simple': change = -1; globalStats.simpleFaults++; break;
         case 'game': change = -1; globalStats.gameFaults++; break;
-        case 'acro': globalStats.acrobatics++; globalStats.koeBues++; break;
-        case 'free': change = -10; globalStats.freeKicks++; globalStats.koeBues++; break;
-        case 'injury': change = -10; globalStats.injuries++; break;
+        case 'acro': koeChange = 1; globalStats.acrobatics++; break;
+        case 'free': change = -10; koeChange = 1; globalStats.freeKicks++; break;
+        case 'injury': change = -5; globalStats.injuries++; break;
     }
     p.score += change;
+    globalStats.koeBues += koeChange;
     if (p.score <= 0) { p.score = 10; globalStats.koeBues++; }
-    history.push({playerIndex, action, change});
+    history.push({playerIndex, action, change, koeChange});
     updateUI();
 }
 
@@ -124,6 +135,12 @@ function updateUI() {
     for (let key in globalStats) {
         document.getElementById(key).textContent = globalStats[key];
     }
+    document.getElementById('globalScore').textContent = `Score global : ${globalStats.goals + globalStats.keeperGoals + globalStats.redCards}`;
+    if (globalStats.redCards >= 5) {
+        document.getElementById('victoryMessage').textContent = "VICTOIRE PAR FORFAIT !";
+    } else {
+        document.getElementById('victoryMessage').textContent = "";
+    }
 }
 
 function undoAction() {
@@ -131,19 +148,23 @@ function undoAction() {
     let last = history.pop();
     let p = players[last.playerIndex];
     p.score -= last.change;
-    if (p.score <= 0) p.score = 10; // Correction si nécessaire
-    // Réduire stats
+    globalStats.koeBues -= last.koeChange;
     switch(last.action) {
-        case 'goal': globalStats.goals--; globalStats.koeBues--; break;
+        case 'goal': globalStats.goals--; break;
+        case 'goalKeeper': globalStats.keeperGoals--; break;
         case 'red': globalStats.redCards--; break;
         case 'yellow': globalStats.yellowCards--; break;
         case 'simple': globalStats.simpleFaults--; break;
         case 'game': globalStats.gameFaults--; break;
-        case 'acro': globalStats.acrobatics--; globalStats.koeBues--; break;
-        case 'free': globalStats.freeKicks--; globalStats.koeBues--; break;
+        case 'acro': globalStats.acrobatics--; break;
+        case 'free': globalStats.freeKicks--; break;
         case 'injury': globalStats.injuries--; break;
     }
     updateUI();
+}
+
+function showResults() {
+    alert(`RESULTATS : ${globalStats.goals + globalStats.keeperGoals + globalStats.redCards}`);
 }
 
 function saveStats() {
